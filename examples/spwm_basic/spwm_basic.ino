@@ -15,17 +15,18 @@
 // Mux pins A,B,C,D,E: all on one port.
 // RGB pins and CLK: all on one port (any pins of that port).
 // OE pin: a TIM3 channel (PA6 PA7 PB0 PB1), or TIM4 (PB6..PB9) with DMD_ALTERNATIVE_TIMERS.
-uint8_t mux_list[] = { PB6, PB5, PB4, PB3, PB8 };
-#define DMD_PIN_nOE  PB0
-#define DMD_PIN_SCLK PB7     // LAT
+uint8_t mux_list[] = { PA1, PA2, PA3, PA4, PA7 };
+#define DMD_PIN_nOE  PA6
+#define DMD_PIN_SCLK PA5     // LAT
 
 #if defined(STM32F1xx)
 uint8_t rgbpins[] = { PA15, PA0, PA1, PA2, PA3, PA4, PA5 };   // CLK, R0, G0, B0, R1, G1, B1
 // 64x32 keeps the framebuffer at 4 KB (STM32F103C8 has 20 KB RAM)
 DMD_RGB_FM6373<RGB64x32plainS16> dmd(mux_list, DMD_PIN_nOE, DMD_PIN_SCLK, rgbpins, DISPLAYS_ACROSS, DISPLAYS_DOWN);
 #else
-uint8_t rgbpins[] = { PA6, PA0, PA1, PA2, PA3, PA4, PA5 };    // CLK, R0, G0, B0, R1, G1, B1
-DMD_RGB_FM6373<RGB128x64plainS32> dmd(mux_list, DMD_PIN_nOE, DMD_PIN_SCLK, rgbpins, DISPLAYS_ACROSS, DISPLAYS_DOWN);
+uint8_t rgbpins[] = { PC10, PC0, PC1, PC2, PC3, PC4, PC5 };    // CLK, R0, G0, B0, R1, G1, B1
+//DMD_RGB_FM6373<RGB128x64plainS32> dmd(mux_list, DMD_PIN_nOE, DMD_PIN_SCLK, rgbpins, DISPLAYS_ACROSS, DISPLAYS_DOWN);
+DMD_RGB_FM6373<RGB64x32plainS16> dmd(mux_list, DMD_PIN_nOE, DMD_PIN_SCLK, rgbpins, DISPLAYS_ACROSS, DISPLAYS_DOWN);
 #endif
 
 // Other chips (same constructor):
@@ -49,18 +50,25 @@ void showBars()
 
 void setup()
 {
-	Serial.begin(115200);
+  	pinMode(PC8, OUTPUT);
+  	pinMode(PC9, OUTPUT);
+    digitalWrite(PC8, HIGH);
+
+
+	//Serial.begin(115200);
 
 	// options that must be set before init():
 	//dmd.configure_multiplexer(DMD_MUX_TYPE_SHIFTREG);  // 595-type row driver
 	//dmd.setColorOrder(DMD_Color_order::BRG);
 
 	if (!dmd.init()) {
-		Serial.println("dmd.init() failed: OE pin has no OE timer channel, or RGB/CLK pins are not on one port");
+		//Serial.println("dmd.init() failed: OE pin has no OE timer channel, or RGB/CLK pins are not on one port");
 		while (1) {}
 	}
 	showBars();
 	delay(3000);
+    digitalWrite(PC9, HIGH);
+
 }
 
 void loop()
