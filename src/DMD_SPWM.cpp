@@ -219,6 +219,9 @@ void DMD_SPWM::build_expand()
 	for (uint8_t i = 0; i < 64; i++) {
 		uint32_t v = 0;
 		for (uint8_t b = 0; b < 6; b++) if (i & (1 << b)) v |= m[b];
+#if DMD_CLK_WITH_DATA
+		v |= clkmask;              // CLK rises together with the data
+#endif
 		expand[i] = v;
 	}
 }
@@ -602,38 +605,80 @@ void DMD_SPWM::load_config_regs()
 	if (++cfg_next >= cfg_cnt) cfg_next = 0;
 }
 
+#if DMD_CLK_WITH_DATA
+// expand[] already holds the CLK bit: one write sets data + CLK, one clears both
+#if DMD_DUAL_CLK_PULSE
+#define PEW(v) { *ds = (v); *ds = (v); *ds = clr; }
+#else
+#define PEW(v) { *ds = (v); *ds = clr; }
+#endif
+#else
 #if DMD_DUAL_CLK_PULSE
 #define PEW(v) { *ds = (v); *ds = ck; *ds = ck; *ds = clr; }
 #else
 #define PEW(v) { *ds = (v); *ds = ck; *ds = clr; }
 #endif
+#endif
+
+/*--------------------------------------------------------------------------------------
+ Transpose eight bits of the six lane values into eight port patterns.
+
+ The panel wants one bit of every lane per clock, but the greyscale values hold one
+ lane each. Doing that bit by bit cost about 16 instructions per clock; this is
+ Hacker's Delight transpose8rS32 and costs about 3. It is called twice per pixel
+ pair, for greyscale bits 15..8 and 7..0.
+
+ transpose8rS32 puts row i at output bit (7-i), so the lanes are packed in reverse
+ row order. The eight results are then bytes of x (first) and y (second), MSB first.
+--------------------------------------------------------------------------------------*/
+__attribute__((optimize("O2"), always_inline)) static inline void dmd_transpose8(
+	uint32_t w01, uint32_t w23, uint32_t w45, uint8_t sh, uint32_t* px, uint32_t* py)
+{
+	const uint8_t sh2 = sh + 16;
+	uint32_t x = (((w45 >> sh2) & 0xFF) << 8) | ((w45 >> sh) & 0xFF);
+	uint32_t y = (((w23 >> sh2) & 0xFF) << 24) | (((w23 >> sh) & 0xFF) << 16)
+		| (((w01 >> sh2) & 0xFF) << 8) | ((w01 >> sh) & 0xFF);
+	uint32_t t;
+	t = (x ^ (x >> 7)) & 0x00AA00AA; x = x ^ t ^ (t << 7);
+	t = (y ^ (y >> 7)) & 0x00AA00AA; y = y ^ t ^ (t << 7);
+	t = (x ^ (x >> 14)) & 0x0000CCCC; x = x ^ t ^ (t << 14);
+	t = (y ^ (y >> 14)) & 0x0000CCCC; y = y ^ t ^ (t << 14);
+	t = (x & 0xF0F0F0F0) | ((y >> 4) & 0x0F0F0F0F);
+	*py = ((x << 4) & 0xF0F0F0F0) | (y & 0x0F0F0F0F);
+	*px = t;
+}
 
 // One 16-bit greyscale word for 6 lanes (upper and lower RGB pixel), MSB first.
 // LAT is held high on the last bit if <latch>; OE pulses on the last 4 bits if <oe_pulse>.
-__attribute__((optimize("O2"))) inline void DMD_SPWM::send_pair(const uint16_t* p, bool latch, bool oe_pulse)
+__attribute__((optimize("O2"), always_inline)) inline void DMD_SPWM::send_pair(const uint16_t* p, bool latch, bool oe_pulse)
 {
 	volatile uint32_t* const ds = datasetreg;
-	const uint32_t ck = clkmask, clr = clk_clrmask;
-	const uint32_t* ex = expand;
+#if !DMD_CLK_WITH_DATA
+	const uint32_t ck = clkmask;
+#endif
+	const uint32_t clr = clk_clrmask;
+	const uint32_t* const ex = expand;
 	const uint16_t c0 = p[0], c1 = p[1];
 	// two lanes per word: low half = lane n, high half = lane n+1
 	const uint32_t w01 = lut5[c0 >> 11] | ((uint32_t)lut6[(c0 >> 5) & 63] << 16);
 	const uint32_t w23 = lut5[c0 & 31] | ((uint32_t)lut5[c1 >> 11] << 16);
 	const uint32_t w45 = lut6[(c1 >> 5) & 63] | ((uint32_t)lut5[c1 & 31] << 16);
+	uint32_t x, y, x2, y2;
 
-#define LANES(b) ({ uint32_t a = (w01 >> (b)) & 0x10001u, c = (w23 >> (b)) & 0x10001u, e = (w45 >> (b)) & 0x10001u; \
-	(a & 1) | (a >> 15) | ((c & 1) << 2) | (c >> 13) | ((e & 1) << 4) | (e >> 11); })
+	// transpose both halves up front, so the lane words are dead during the emit
+	dmd_transpose8(w01, w23, w45, 8, &x, &y);    // greyscale bits 15..8
+	dmd_transpose8(w01, w23, w45, 0, &x2, &y2);  // greyscale bits 7..0
 
-	for (int8_t b = 15; b >= 4; b--) PEW(ex[LANES(b)]);
+	PEW(ex[(x >> 24) & 0x3F]) PEW(ex[(x >> 16) & 0x3F]) PEW(ex[(x >> 8) & 0x3F]) PEW(ex[x & 0x3F])
+	PEW(ex[(y >> 24) & 0x3F]) PEW(ex[(y >> 16) & 0x3F]) PEW(ex[(y >> 8) & 0x3F]) PEW(ex[y & 0x3F])
+
+	PEW(ex[(x2 >> 24) & 0x3F]) PEW(ex[(x2 >> 16) & 0x3F]) PEW(ex[(x2 >> 8) & 0x3F]) PEW(ex[x2 & 0x3F])
 	if (oe_pulse) *oesetreg = oemask;
-	PEW(ex[LANES(3)]);
-	PEW(ex[LANES(2)]);
-	PEW(ex[LANES(1)]);
+	PEW(ex[(y2 >> 24) & 0x3F]) PEW(ex[(y2 >> 16) & 0x3F]) PEW(ex[(y2 >> 8) & 0x3F])
 	if (latch) *latsetreg = latmask;
-	PEW(ex[LANES(0)]);
+	PEW(ex[y2 & 0x3F])
 	if (latch) *latsetreg = latmask << 16;
 	if (oe_pulse) *oesetreg = oemask << 16;
-#undef LANES
 }
 
 // FM6353 / FM6363: plain greyscale upload (the panel keeps displaying meanwhile)

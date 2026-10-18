@@ -35,6 +35,16 @@
 #endif
 #endif
 
+/* ---------------------------------------------------------------------------------
+   DMD_CLK_WITH_DATA: data and CLK rise in the same write, which saves one GPIO
+   write per clock (~20% of the upload time). Setup time between data and the CLK
+   edge is then zero, so not every driver chip accepts it - try it on your panel.
+   0 (default) = CLK rises one write after the data is set.
+----------------------------------------------------------------------------------- */
+#ifndef DMD_CLK_WITH_DATA
+#define DMD_CLK_WITH_DATA 0
+#endif
+
 /* Priority of the row-switching interrupt (0 = highest). */
 #ifndef DMD_IRQ_PRIORITY
 #define DMD_IRQ_PRIORITY 0
