@@ -3,3 +3,8 @@
 session_transcript.md
 session_transcript_raw.jsonl
 extras/
+examples/spwm_uart_simple/spwm_uart_simple.ino
+Claude outputs/spwm_uart_stream.ino
+examples/spwm_uart_simple/platformio.ini
+examples/spwm_uart_stream/platformio.ini
+examples/spwm_uart_stream/spwm_uart_stream.ino
