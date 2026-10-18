@@ -90,6 +90,10 @@ public:
 	void drawMonoBitmap(int16_t x, int16_t y, const uint8_t* bitmap, int16_t w, int16_t h,
 		uint16_t fg, uint32_t bg = DMD_TRANSPARENT);
 	uint16_t* getBuffer() { return fb; }
+	// Framebuffer word index of pixel (x,y) as used by setPixel(), -1 if outside.
+	// Same mapping as extras/pc/spwm_fb.py
+	int32_t fbIndex(int16_t x, int16_t y);
+	uint32_t fbWords() const { return (uint32_t)WIDTH * HEIGHT; }
 
 	void setRotation(uint8_t r) { rotation = r & 3; _width = (rotation & 1) ? HEIGHT : WIDTH; _height = (rotation & 1) ? WIDTH : HEIGHT; }
 	uint8_t getRotation() const { return rotation; }

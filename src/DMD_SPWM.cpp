@@ -331,6 +331,13 @@ void DMD_SPWM::setPixel(int16_t x, int16_t y, uint16_t color)
 	fb[panel_index(x, y)] = color;
 }
 
+int32_t DMD_SPWM::fbIndex(int16_t x, int16_t y)
+{
+	if (x < 0 || y < 0 || x >= _width || y >= _height) return -1;
+	transform_XY(x, y);
+	return panel_index(x, y);
+}
+
 uint16_t DMD_SPWM::getPixel(int16_t x, int16_t y)
 {
 	if (x < 0 || y < 0 || x >= _width || y >= _height) return 0;

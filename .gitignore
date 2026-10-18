@@ -1,2 +1,5 @@
 .pio/
 .vscode/
+session_transcript.md
+session_transcript_raw.jsonl
+extras/
